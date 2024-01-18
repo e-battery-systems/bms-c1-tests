@@ -1,0 +1,42 @@
+name: Comment with PDF-diff
+
+on:
+  workflow_run:
+    workflows: ["Run PDF-diff"]
+    types:
+      - completed
+
+jobs:
+  comment-diff:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: 'Download build artifact'
+      uses: dawidd6/action-download-artifact@v4
+      with:
+        github_token: "${{ secrets.GITHUB_TOKEN }}"
+        run_id: ${{ github.event.workflow_run.id }}
+        workflow: kibot_diff.yml
+        name: pr-metadata
+
+      - name: 'Restore preserved ENV'
+        run: cat pr.env >> "${GITHUB_ENV}"
+
+      - name: Find Comment
+        uses: peter-evans/find-comment@v2
+        id: fc
+        with:
+          issue-number: ${{ env.PR_NUMBER }}
+          comment-author: 'github-actions[bot]'
+          body-regex: 'Diff between .* \(\S+\) and .* \(\S+\):'
+
+      - name: Create or update comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ env.PR_NUMBER }}
+          body: |
+            Diff between ${{ env.PR_BASE_REF }} (${{ env.PR_BASE_SHORT }}) and ${{ env.PR_HEAD_REF }} (${{ env.PR_HEAD_SHORT }}):
+            - [bms-c1-diff_sch.pdf](${{ env.PR_LINK_SCH }})
+            - [bms-c1-diff_pcb.pdf](${{ env.PR_LINK_PCB }})
+          edit-mode: replace
